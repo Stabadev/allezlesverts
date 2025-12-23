@@ -1,0 +1,47 @@
+@1 Echauffe ta voix
+@10 attention ...
+@17 Dans le vestiaire avant de rentrer
+@24 Pour commencer à nous échauffer
+@31 Tous 
+@32 en choeur nous chantons
+@40 On est les rois du Ballon  
+@46 (Pause)        
+@51 Quand on arrive sur le terrain
+@60 On les entend frapper dans leurs mains
+@68 Avec eux nous chantons
+@76 Saint-Etienne sera champion 
+@84 Oonnn..         
+
+@88 Allez! 
+@92 Qui c'est les plus forts?
+@96 Évidemment c'est les verts
+@100 On a un bon public et les 
+@104 meilleurs supporters
+@108 On va gagner! 
+@112 Ça c'est juré. 
+@114 Allez! 
+@120 Allez! 
+@123 Qui c'est les plus forts?
+@127 Évidemment, c'est les verts
+@131 Nous, on joue au football et on n'a 
+@135 pas de frontières
+@139 Main dans la main 
+@143 on va plus loin, plus 
+@147 loin
+@151 Allez, 
+@155 allez 
+@159 les verts!
+@167 Nos supporters sont venus de loin,
+@175 Ils sont fidèles et ils nous aiment bien
+@183 Ils font sauter les bouchons
+@191 Quand Saint-Etienne est champion Onnn..        
+@203 Allez! Qui c'est les plus forts?
+@211 Évidemment, c'est les verts
+@215 On a un bon public et les meilleurs supporters
+@223 On va gagner! Ça c'est juré. 
+@227 Allez!
+@235 Allez! Qui c'est les plus forts?
+@243 Évidemment, c'est les verts
+@247 Nous, on joue au football et on n'a pas de frontières
+@255 Main dans la main on va plus loin, plus loin
+@263 Allez, allez les verts! ...

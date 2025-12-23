@@ -1,0 +1,2224 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vocal Pitch Trainer</title>
+
+  <!-- p5.js + p5.sound -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+
+  <!-- ml5.js (CREPE) -->
+  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+
+  <!-- @tonejs/midi -->
+  <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
+
+  <style>
+  :root{
+    --bgTop:#101a33;
+    --bgMid:#0b1224;
+    --bgBot:#050816;
+
+    --panelA: rgba(255,255,255,0.10);
+    --panelB: rgba(255,255,255,0.06);
+    --panelEdge: rgba(255,255,255,0.14);
+
+    --text:#f8fafc;
+    --muted: rgba(226,232,240,0.78);
+
+    --green:#22c55e;
+    --blue:#60a5fa;
+    --red:#ef4444;
+
+    --gridA: rgba(226,232,240,0.14);
+    --gridB: rgba(226,232,240,0.08);
+  }
+
+  *{ box-sizing:border-box; }
+  html, body { height:100%; }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(96,165,250,0.20) 0%, rgba(16,26,51,0.0) 45%),
+      radial-gradient(circle at 85% 10%, rgba(34,197,94,0.14) 0%, rgba(16,26,51,0.0) 52%),
+      linear-gradient(180deg, var(--bgTop) 0%, var(--bgMid) 55%, var(--bgBot) 100%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    overflow:hidden;
+  }
+
+  .app{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    padding: max(8px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+    gap:8px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:8px 10px;
+    border:1px solid var(--panelEdge);
+    border-radius:14px;
+    background: linear-gradient(145deg, var(--panelA), var(--panelB));
+    box-shadow: 0 18px 60px rgba(0,0,0,0.42);
+  }
+
+  .brand{ min-width:0; }
+  .brand .title{
+    font-weight:950;
+    letter-spacing:.02em;
+    font-size: .98rem;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .status{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.20);
+    background: rgba(255,255,255,0.08);
+    min-width: 240px;
+    text-align:right;
+  }
+  .status.ready{
+    border-color: rgba(34,197,94,0.42);
+    background: radial-gradient(circle at top left, rgba(16,185,129,0.16), rgba(255,255,255,0.06));
+  }
+  .status .main{ font-size:.82rem; }
+  .status .mini{ font-size:.70rem; color: rgba(226,232,240,0.86); }
+
+  .game{
+    flex: 1 1 auto;
+    min-height: 0;
+    border:1px solid var(--panelEdge);
+    border-radius:18px;
+    background: linear-gradient(145deg, var(--panelA), var(--panelB));
+    box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+
+  .controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:8px 10px;
+    border-bottom:1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.05);
+    flex-wrap:wrap;
+  }
+
+  .controlRow{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    min-width: 0;
+    width: 100%;
+    justify-content:flex-start;
+  }
+  .group{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:nowrap;
+    min-width: 0;
+  }
+  .spacer{
+    flex: 1 1 auto;
+  }
+
+  .btn{
+    appearance:none;
+    border:none;
+    border-radius:999px;
+    padding:9px 12px;
+    font-weight:950;
+    letter-spacing:.06em;
+    color:#ecfdf5;
+    cursor:pointer;
+    background: radial-gradient(circle at top left, rgba(16,185,129,0.35), rgba(6,78,59,0.95));
+    border:1px solid rgba(34,197,94,0.55);
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    user-select:none;
+    min-width: 86px;
+    justify-content:center;
+  }
+  .btn.stop{
+    background: radial-gradient(circle at top left, rgba(239,68,68,0.22), rgba(88,28,28,0.95));
+    border:1px solid rgba(239,68,68,0.45);
+    color: #fff;
+  }
+  .btn:disabled{ opacity:.55; cursor:default; border-style:dashed; }
+
+  .iconbtn{
+    width:36px;
+    height:36px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    cursor:pointer;
+    user-select:none;
+    position:relative;
+    font-size: 1.05rem;
+    backdrop-filter: blur(6px);
+  }
+  .iconbtn:active{ transform: scale(0.98); }
+  .iconbtn[disabled]{ opacity:.5; cursor:default; }
+
+  .iconbtn.muted::after{
+    content:"";
+    position:absolute;
+    width:26px;
+    height:2px;
+    background: rgba(239,68,68,0.95);
+    transform: rotate(-28deg);
+    border-radius:2px;
+    box-shadow: 0 0 10px rgba(239,68,68,0.25);
+  }
+  .iconbtn.muted{
+    border-color: rgba(239,68,68,0.28);
+    background: rgba(255,255,255,0.05);
+    opacity: 0.92;
+  }
+
+  .recDot{
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    border: 1px solid rgba(239,68,68,0.28);
+    background: rgba(239,68,68,0.15);
+    box-shadow:none;
+    margin: 0 2px;
+  }
+  .recDot.on{
+    background: rgba(239,68,68,0.96);
+    border-color: rgba(239,68,68,0.60);
+    box-shadow: 0 0 14px rgba(239,68,68,0.35);
+  }
+
+  .pitchCycleBtn{
+    height:36px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border:1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.06);
+    color: rgba(226,232,240,0.92);
+    font-weight: 1000;
+    letter-spacing: .06em;
+    cursor:pointer;
+    user-select:none;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    backdrop-filter: blur(6px);
+  }
+  .pitchPill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width: 40px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border:1px solid rgba(255,255,255,0.14);
+    background: rgba(0,0,0,0.18);
+    font-variant-numeric: tabular-nums;
+    color:#fff;
+  }
+  .pitchHint{
+    font-size: .74rem;
+    color: rgba(226,232,240,0.70);
+  }
+
+  .lyrics{
+    padding:12px 12px 10px;
+    border-bottom:1px solid rgba(255,255,255,0.10);
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    text-align:center;
+  }
+  .ly-prev{
+    font-size: .98rem;
+    color: rgba(226,232,240,0.62);
+    line-height: 1.18;
+    max-width: 94%;
+    text-wrap: balance;
+    opacity: 0.92;
+    filter: saturate(0.9);
+  }
+
+  .ly-current{
+    font-size: 1.28rem;
+    font-weight: 1100;
+    line-height: 1.18;
+    letter-spacing: .01em;
+    max-width: 94%;
+    text-wrap: balance;
+  }
+  .ly-next{
+    font-size: 1.00rem;
+    color: var(--muted);
+    line-height: 1.20;
+    max-width: 94%;
+    text-wrap: balance;
+  }
+
+  #canvas-wrap{
+    flex: 1 1 auto;
+    min-height: 0;
+    position:relative;
+    background:
+      radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(0,0,0,0.0) 55%),
+      radial-gradient(circle at 50% 0%, rgba(96,165,250,0.10), rgba(0,0,0,0.0) 55%),
+      rgba(5,8,22,1);
+    height: auto;
+    min-height: 240px;
+    overflow:hidden;
+  }
+
+  #canvas-wrap canvas{ display:block; max-width:100%; max-height:100%; }
+
+  .scorehud{
+    position:absolute;
+    top:10px;
+    right:10px;
+    padding:6px 10px;
+    border-radius:10px;
+    background: rgba(0,0,0,0.42);
+    border:1px solid rgba(255,255,255,0.14);
+    backdrop-filter: blur(6px);
+    font-variant-numeric: tabular-nums;
+    font-weight: 950;
+    letter-spacing: .04em;
+    font-size: .92rem;
+    color: #fff;
+    pointer-events:none;
+    user-select:none;
+    min-width: 76px;
+    text-align:right;
+  }
+  .combohud{
+    position:absolute;
+    top:46px;
+    right:10px;
+    padding:6px 10px;
+    border-radius:10px;
+    background: rgba(0,0,0,0.34);
+    border:1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(6px);
+    font-weight: 900;
+    font-size: .78rem;
+    color: rgba(255,255,255,0.92);
+    pointer-events:none;
+    user-select:none;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .combohud.show{ opacity: 1; transform: translateY(0px); }
+
+  .bottomstrip{
+    flex: 0 0 auto;
+    padding:8px 10px;
+    border-top:1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.05);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .bottomrow{
+    display:flex;
+    gap:10px;
+    align-items:stretch;
+  }
+  .slidersCol{
+    flex: 1 1 auto;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    min-width: 0;
+  }
+  .slider{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    color: rgba(226,232,240,0.85);
+    font-size:.80rem;
+    min-width: 0;
+  }
+  .slider .lbl{
+    display:inline-flex;
+    align-items:baseline;
+    gap:6px;
+    white-space:nowrap;
+  }
+  .slider b{ color: var(--text); font-size:.86rem; font-variant-numeric: tabular-nums; }
+  .slider input[type="range"]{
+    flex:1;
+    min-width: 0;
+    accent-color: rgba(96,165,250,0.95);
+  }
+
+  .vuSide{
+    flex: 0 0 20%;
+    max-width: 130px;
+    min-width: 78px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    padding: 8px 8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    align-items:stretch;
+    justify-content:center;
+    backdrop-filter: blur(6px);
+  }
+  .vuTrack{
+    position:relative;
+    flex: 1 1 auto;
+    min-height: 62px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(0,0,0,0.25);
+    overflow:hidden;
+  }
+  .vuFillV{
+    position:absolute;
+    left:0; right:0;
+    bottom:0;
+    height: 0%;
+    background: linear-gradient(0deg, rgba(34,197,94,0.95), rgba(245,158,11,0.95));
+    transition: height .06s linear;
+  }
+  .vuMeta{
+    display:flex;
+    justify-content:space-between;
+    font-size: .72rem;
+    color: rgba(226,232,240,0.78);
+    font-variant-numeric: tabular-nums;
+    gap: 8px;
+  }
+  .vuMeta span{ white-space:nowrap; }
+
+  .overlay{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding: 14px;
+    background: radial-gradient(circle at top left, rgba(2,6,23,0.55), rgba(0,0,0,0.85));
+    backdrop-filter: blur(7px);
+    z-index: 50;
+  }
+  .overlay.show{ display:flex; }
+  .ovcard{
+    width: min(720px, 100%);
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(145deg, rgba(255,255,255,0.10), rgba(0,0,0,0.30));
+    box-shadow: 0 30px 90px rgba(0,0,0,0.65);
+    padding: 16px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    text-align:center;
+  }
+  .ovtitle{
+    margin:0;
+    font-size: 1.05rem;
+    font-weight: 1100;
+    letter-spacing:.02em;
+  }
+  .big{
+    text-align:center;
+    font-size: 3.0rem;
+    font-weight: 1100;
+    margin: 0;
+    letter-spacing:.04em;
+  }
+  .endcard{
+    width: min(560px, 100%);
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(145deg, rgba(255,255,255,0.10), rgba(0,0,0,0.32));
+    box-shadow: 0 30px 90px rgba(0,0,0,0.65);
+    padding: 18px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    text-align:center;
+  }
+  .replaybtn{
+    margin: 6px auto 0;
+    width: 56px;
+    height: 56px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.20);
+    background: radial-gradient(circle at top left, rgba(34,197,94,0.16), rgba(255,255,255,0.06));
+    color: #fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 1.4rem;
+    cursor:pointer;
+    user-select:none;
+  }
+  .endScore{
+    font-size: 2.0rem;
+    font-weight: 1100;
+    letter-spacing: .04em;
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+  }
+  .endMsg{
+    color: rgba(226,232,240,0.92);
+    font-size: 1.0rem;
+    line-height: 1.3;
+  }
+
+  @media (max-width: 340px){
+    .controls{ padding:7px 8px; gap:6px; }
+    .btn{ min-width: 74px; padding:8px 10px; font-size:.82rem; }
+    .iconbtn{ width:34px; height:34px; font-size:1.0rem; }
+    .pitchCycleBtn{ height:34px; padding:0 8px; }
+    .pitchPill{ min-width: 38px; height:24px; padding:0 8px; }
+    .pitchHint{ display:none; }
+  }
+  @media (max-width: 390px){
+    .vuSide{ flex-basis: 24%; }
+  }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand"><div class="title">Vocal Pitch Trainer</div></div>
+      <div id="status" class="status">
+        <div id="status-main" class="main">Clique START</div>
+        <div id="status-midi" class="mini">MIDI : chargement…</div>
+      </div>
+    </div>
+
+    <div class="game">
+      <div class="controls">
+        <div class="controlRow">
+          <div class="group">
+            <button id="start-btn" class="btn">START</button>
+            <div id="rec-dot" class="recDot" title="Enregistrement"></div>
+
+            <button id="pitch-cycle" class="pitchCycleBtn" title="Pitch: 0 → +2 → −2 → … (MP3 pré-pitchés + transpose MIDI)">
+              <span class="pitchHint">Pitch</span>
+              <span id="pitch-read" class="pitchPill">0</span>
+            </button>
+          </div>
+
+          <div class="spacer"></div>
+
+          <div class="group">
+            <button id="mouth-btn" class="iconbtn" title="Voix (👄)">👄</button>
+            <button id="guitar-btn" class="iconbtn" title="Accompagnement (🎸)">🎸</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lyrics">
+        <div id="lyric-prev" class="ly-prev"></div>
+        <div id="lyric-current" class="ly-current">Paroles…</div>
+        <div id="lyric-next" class="ly-next"></div>
+      </div>
+
+      <div id="canvas-wrap">
+        <div class="scorehud">
+          <div><span id="score-val">0</span></div>
+          <div style="margin-top:2px;font-size:.74rem;font-weight:800;opacity:.82;">
+            <span id="hitpct-val">0</span>%
+          </div>
+        </div>
+        <div id="combo-hud" class="combohud">COMBO x1</div>
+      </div>
+
+      <div class="bottomstrip">
+        <div class="bottomrow">
+          <div class="slidersCol">
+            <div class="slider" title="Volume guide MIDI (synth). Mets à 0% pour couper.">
+              <span class="lbl">Guide <b><span id="guidevol-label">25</span>%</b></span>
+              <input id="guidevol-slider" type="range" min="0" max="100" step="1" value="25">
+            </div>
+
+            <div class="slider" title="Volume MP3 global. Mets à 0% pour couper.">
+              <span class="lbl">MP3 <b><span id="mp3vol-label">55</span>%</b></span>
+              <input id="mp3vol-slider" type="range" min="0" max="100" step="1" value="55">
+            </div>
+          </div>
+
+          <div class="vuSide" title="VU-mètre (niveau micro)">
+            <div class="vuTrack">
+              <div id="vu-fill-v" class="vuFillV"></div>
+            </div>
+            <div class="vuMeta">
+              <span id="level-display">0.000</span>
+              <span id="level-max">0.050</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div id="count-ov" class="overlay">
+    <div class="ovcard">
+      <h3 class="ovtitle" style="margin:0;">Départ</h3>
+      <div id="count-big" class="big">3</div>
+    </div>
+  </div>
+
+  <!-- END -->
+  <div id="end-ov" class="overlay">
+    <div class="endcard">
+      <div class="ovtitle">Fin 🎉</div>
+      <div class="endScore"><span id="final-score">0</span></div>
+      <div id="final-msg" class="endMsg"></div>
+      <div id="replay-btn" class="replaybtn" title="Rejouer">↻</div>
+    </div>
+  </div>
+
+<script>
+/* =========================================================
+   REFACTOR “smooth/simple” (ta solution) :
+   - La mélodie défile horizontalement (inchangé)
+   - L’AXE/ÉCHELLE à gauche “bouge” (camera verticale suit la voix)
+   - Le point VOIX est FIXE au centre (pas de y qui saute)
+   - Optimisations: cache DOM + fenêtre visible calculée 1x/frame
+   ========================================================= */
+
+const MODEL_URL = "./model/";
+const MIDI_URL  = "pistes_mp3_midi/asse_2_midi.mid";
+
+const VOIX_FILES = [
+  "pistes_mp3_midi/asse_2_voix_down.mp3",
+  "pistes_mp3_midi/asse_2_voix.mp3",
+  "pistes_mp3_midi/asse_2_voix_up.mp3",
+];
+const INSTRU_FILES = [
+  "pistes_mp3_midi/asse_2_instru_down.mp3",
+  "pistes_mp3_midi/asse_2_instru.mp3",
+  "pistes_mp3_midi/asse_2_instru_up.mp3",
+];
+
+const WINDOW_MS = 5000;
+const AMP_THRESHOLD = 0.05;
+const SMOOTH_AMOUNT = 0.4;
+const GAP_MS = 200;
+
+const TEMPO_BPM = 120;
+const BEAT_DURATION_SEC = 60 / TEMPO_BPM;
+
+const VIEW_SPAN_ST = 30;      // pas de dézoom dynamique
+const VP_LERP = 0.06;         // “camera follow” (échelle) douce
+
+const VU_FLOOR = 0.02;
+const VU_SESSION_DECAY = 0.9998;
+const VU_PEAK_HOLD_DECAY = 0.996;
+
+const NOTE_RETRIGGER_GUARD_MS = 80;
+
+const PITCH_TOLERANCE_RATIO = 0.10;
+const SCORE_TICK_MS = 50;
+const SCORE_PER_TICK = 2;
+
+const HIT_TOUCH_MS = 70;
+const HIT_TOLERANCE_ST = 1.15;
+
+const SPARK_RATE = 12;
+const MAX_PARTICLES = 520;
+const NEON_ON_MS = 650;
+const END_PAD_MS = 400;
+
+const OCTAVE_SEARCH_RANGE = 2;
+const OCTAVE_HYST_MS = 220;
+const OCTAVE_SWITCH_IMPROVE_ST = 3.25;
+const OCTAVE_SWITCH_FORCE_ST = 2.00;
+const OCTAVE_SWITCH_PENALTY_ST = 1.10;
+const OCTAVE_REQUIRE_EXPECTED = true;
+
+const PITCH_HZ_DESKTOP = 25;
+const PITCH_HZ_MOBILE  = 18;
+const PITCH_HZ_IDLE    = 6;
+
+const HUD_HZ = 12;
+const SLIDER_THROTTLE_MS = 40;
+
+/* ====== DOM cache (simplif + perf) ====== */
+const UI = {};
+function $(id){ return document.getElementById(id); }
+function cacheUI(){
+  UI.status = $("status");
+  UI.statusMain = $("status-main");
+  UI.statusMidi = $("status-midi");
+
+  UI.startBtn = $("start-btn");
+  UI.recDot = $("rec-dot");
+
+  UI.pitchCycle = $("pitch-cycle");
+  UI.pitchRead = $("pitch-read");
+
+  UI.mouthBtn = $("mouth-btn");
+  UI.guitarBtn = $("guitar-btn");
+
+  UI.lyPrev = $("lyric-prev");
+  UI.lyCur  = $("lyric-current");
+  UI.lyNext = $("lyric-next");
+
+  UI.scoreVal = $("score-val");
+  UI.hitpctVal = $("hitpct-val");
+  UI.comboHud = $("combo-hud");
+
+  UI.guideSlider = $("guidevol-slider");
+  UI.guideLabel  = $("guidevol-label");
+  UI.mp3Slider   = $("mp3vol-slider");
+  UI.mp3Label    = $("mp3vol-label");
+
+  UI.vuFill = $("vu-fill-v");
+  UI.levelDisplay = $("level-display");
+  UI.levelMax = $("level-max");
+
+  UI.countOv = $("count-ov");
+  UI.countBig = $("count-big");
+
+  UI.endOv = $("end-ov");
+  UI.finalScore = $("final-score");
+  UI.finalMsg = $("final-msg");
+  UI.replayBtn = $("replay-btn");
+}
+
+/* ====== State ====== */
+let pitchDotAlpha = 0;
+const DOT_FADE_DOWN = 0.90;
+const DOT_RISE = 255;
+
+let audioContext, mic, pitch, fft;
+let modelReady=false, listening=false;
+let micReady=false;
+
+let currentLevel=0;
+let currentFreq=null;
+let currentMidi=null;
+let currentNote="--";
+let lastSmoothMidiRaw=null;
+
+let lastExpectedMidi=null;
+let octaveShift=0;
+let octaveCandidate=0;
+let octaveCandidateSince=0;
+
+let pitchStepSemis = 0;
+let semitoneOffset = 0;
+
+let history=[];
+let historyHead=0;
+const HISTORY_MAX = 1400;
+
+let midiLoaded=false;
+let midiNotes=[];
+let songEndMs=0;
+let midiZeroTime=null;
+let midiPaused=false;
+let pausedAtMs=0;
+
+let expectedIdx=0;
+let visibleI0=0, visibleI1=0;
+let eligibleCount=0;
+let hitEligibleCount=0;
+
+let hitFlags = null;
+let neonUntil = null;
+
+let lyrics=[], lyricsLoaded=false, currentLyricIndex=-1;
+
+// “camera” verticale (échelle qui bouge)
+let vpCenterMidi=60, vpTargetMidi=60;
+
+const PHASE={IDLE:"IDLE", STARTING:"STARTING", COUNTDOWN:"COUNTDOWN", RUNNING:"RUNNING", ENDED:"ENDED"};
+let phase=PHASE.IDLE, phaseT0=0;
+
+let vuSessionMax=0.05;
+let vuPeakHold=0.05;
+
+let masterGain=null;
+let guideVol01=0.25;
+let lastPlayedMidi=null;
+let lastNoteFireMs=-1;
+
+let score=0;
+let lastScoreTickMs=-1;
+let currentExpectedId=-1;
+let touchAccumMs=0;
+let combo=0;
+let lastLitTimeMs=-1;
+
+let particles = new Array(MAX_PARTICLES);
+let pCount = 0;
+let pHead = 0;
+
+let pitchLoopTimer = 0;
+let pitchLoopActive = false;
+let pitchBusy = false;
+
+let mp3Vol01=0.55;
+let voiceOn=true;
+let accompOn=true;
+
+let aVoix = [null,null,null];
+let aInstru = [null,null,null];
+
+let mp3MasterGain = null;
+let voiceBusGain = null;
+let instruBusGain = null;
+let voiceGains = [null,null,null];
+let instruGains = [null,null,null];
+
+let mp3SourcesMade = false;
+let mp3EverStarted = false;
+let lastResyncCheckMs = 0;
+
+let lastHudMs = 0;
+let lastVuMs = 0;
+
+/* cache “visible window” 1x/frame */
+let _vwSongTimeMs = null;
+
+function stepToIndex(semi){
+  if (semi <= -2) return 0;
+  if (semi >= +2) return 2;
+  return 1;
+}
+
+function isMobileDevice(){
+  const ua = navigator.userAgent || "";
+  const touch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  return touch && /Android|iPhone|iPad|iPod/i.test(ua);
+}
+function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
+function hzToMidi(hz){ return 69 + 12*Math.log2(hz/440); }
+function midiToHz(m){ return 440 * Math.pow(2,(m-69)/12); }
+function midiToNote(m){
+  const SEMI=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const midi=Math.round(m);
+  const ni=((midi%12)+12)%12;
+  const oct=Math.floor(midi/12)-1;
+  return SEMI[ni]+oct;
+}
+function percentileSorted(arrSorted, p){
+  if (!arrSorted.length) return 0;
+  const idx=(arrSorted.length-1)*clamp(p,0,1);
+  const lo=Math.floor(idx), hi=Math.ceil(idx);
+  if (lo===hi) return arrSorted[lo];
+  const t=idx-lo;
+  return arrSorted[lo]*(1-t) + arrSorted[hi]*t;
+}
+
+function pitchIntervalMs(){
+  if (!modelReady || !pitch) return 0;
+  if (phase === PHASE.RUNNING) {
+    const hz = isMobileDevice() ? PITCH_HZ_MOBILE : PITCH_HZ_DESKTOP;
+    return Math.round(1000 / Math.max(1, hz));
+  }
+  return Math.round(1000 / Math.max(1, PITCH_HZ_IDLE));
+}
+function startPitchLoop(){
+  stopPitchLoop();
+  pitchLoopActive = true;
+  schedulePitchTick(0);
+}
+function stopPitchLoop(){
+  pitchLoopActive = false;
+  pitchBusy = false;
+  if (pitchLoopTimer) { clearTimeout(pitchLoopTimer); pitchLoopTimer = 0; }
+}
+function schedulePitchTick(delayMs){
+  if (!pitchLoopActive) return;
+  pitchLoopTimer = setTimeout(pitchTick, Math.max(0, delayMs|0));
+}
+
+function throttleMs(fn, waitMs){
+  let last = 0;
+  let pending = false;
+  let lastArgs = null;
+  return function(...args){
+    const t = performance.now();
+    lastArgs = args;
+    if (t - last >= waitMs){
+      last = t;
+      fn.apply(this, args);
+      return;
+    }
+    if (pending) return;
+    pending = true;
+    setTimeout(()=>{
+      pending = false;
+      last = performance.now();
+      fn.apply(this, lastArgs || []);
+    }, Math.max(0, waitMs - (t - last)));
+  };
+}
+
+/* Pitch cyclique : 0 → +2 → −2 → 0 */
+function cyclePitch(){
+  let next = 0;
+  if (pitchStepSemis === 0) next = +2;
+  else if (pitchStepSemis === +2) next = -2;
+  else next = 0;
+  setPitchSemis(next);
+}
+
+function resizeCanvasToWrap(){
+  const wrap = $("canvas-wrap");
+  if (!wrap) return;
+  const w = Math.max(10, wrap.clientWidth || 720);
+  const h = Math.max(10, wrap.clientHeight || 360);
+  if (typeof width !== "undefined" && typeof height !== "undefined"){
+    if (width === w && height === h) return;
+  }
+  resizeCanvas(w, h);
+}
+
+function setup(){
+  cacheUI();
+
+  const wrap = $("canvas-wrap");
+  const w = wrap.clientWidth || 720;
+  const h = wrap.clientHeight || 360;
+  const cnv = createCanvas(w, h);
+  cnv.parent("canvas-wrap");
+
+  setTimeout(resizeCanvasToWrap, 0);
+  if (window.visualViewport){
+    window.visualViewport.addEventListener("resize", () => setTimeout(resizeCanvasToWrap, 0));
+  }
+
+  textFont("system-ui");
+  textSize(12);
+
+  UI.startBtn.addEventListener("click", () => {
+    if (phase === PHASE.RUNNING || phase === PHASE.COUNTDOWN) resetToAppStart(true);
+    else startAudio();
+  });
+
+  UI.pitchCycle.addEventListener("click", cyclePitch);
+  setPitchSemis(0);
+
+  UI.mouthBtn.addEventListener("click", ()=>{
+    voiceOn = !voiceOn;
+    refreshStemButtons();
+    applyMp3MixSmooth();
+  });
+  UI.guitarBtn.addEventListener("click", ()=>{
+    accompOn = !accompOn;
+    refreshStemButtons();
+    applyMp3MixSmooth();
+  });
+  refreshStemButtons();
+
+  UI.guideSlider.addEventListener("input", throttleMs(()=>{
+    const v = parseInt(UI.guideSlider.value,10)||0;
+    UI.guideLabel.textContent = String(v);
+    guideVol01 = clamp(v/100, 0, 1);
+    applyGuideVolumeSmooth();
+  }, SLIDER_THROTTLE_MS));
+  UI.guideLabel.textContent = UI.guideSlider.value;
+
+  UI.mp3Slider.addEventListener("input", throttleMs(()=>{
+    const v = parseInt(UI.mp3Slider.value,10)||0;
+    UI.mp3Label.textContent = String(v);
+    mp3Vol01 = clamp(v/100, 0, 1);
+    applyMp3MixSmooth(true);
+  }, SLIDER_THROTTLE_MS));
+  UI.mp3Label.textContent = UI.mp3Slider.value;
+
+  UI.replayBtn.addEventListener("click", () => resetToAppStart(true));
+
+  setStatusMain("Clique START");
+  setStatusMidi("MIDI : chargement…");
+
+  setupMp3Elements();
+  loadMidiFile();
+  loadLyrics();
+}
+
+function windowResized(){
+  resizeCanvasToWrap();
+}
+
+function draw(){
+  background(10, 16, 36);
+
+  if (mic) currentLevel = mic.getLevel();
+
+  // camera follow (échelle) : suit la voix (ou reste stable si silence)
+  vpCenterMidi += (vpTargetMidi - vpCenterMidi) * VP_LERP;
+
+  drawGrid();
+  drawExpectedMidiWindowed();
+  drawHitHighlightsWindowed();
+
+  // VOIX : point fixe + trace relative (optionnelle)
+  drawUserPitchRelative();
+  drawCenterLine();
+  drawVoiceDotFixed();
+  drawParticlesPool();
+
+  updateParticlesPool();
+  updatePhaseMachine();
+
+  const now = millis();
+  if ((now - lastVuMs) > (1000/15)) { updateVUDynamicVertical(); lastVuMs = now; }
+  if ((now - lastHudMs) > (1000/HUD_HZ)) { updateHudLite(); lastHudMs = now; }
+
+  updateLyricsThrottled(now);
+  if (phase === PHASE.RUNNING) resyncMutedTracksOccasionally(now);
+}
+
+async function startAudio(){
+  if (listening) return;
+  listening = true;
+  phase = PHASE.STARTING;
+
+  UI.startBtn.disabled = true;
+  UI.startBtn.textContent = "…";
+
+  try{
+    if (typeof userStartAudio === "function") userStartAudio();
+    audioContext = getAudioContext();
+    if (audioContext && audioContext.state === "closed"){
+      setStatusMain("Audio bloqué — recharge");
+      resetStart();
+      return;
+    }
+    if (audioContext.state !== "running") await audioContext.resume();
+
+    initSynthIfNeeded();
+    initMp3WebAudioGraphIfNeeded();
+    applyGuideVolumeSmooth();
+    applyMp3MixSmooth(true);
+
+    mic = new p5.AudioIn();
+    mic.start(() => {
+      micReady = true;
+      fft = new p5.FFT(0.9, 256);
+      fft.setInput(mic);
+
+      pitch = ml5.pitchDetection(
+        MODEL_URL,
+        audioContext,
+        mic.stream,
+        () => {
+          modelReady = true;
+          markReady();
+
+          UI.startBtn.disabled = false;
+          UI.startBtn.textContent = "START";
+
+          startPitchLoop();
+          updateTopMiniStatus();
+
+          if (midiLoaded) startCountdown();
+          else setStatusMain("Micro OK • attente MIDI…");
+        }
+      );
+    }, () => {
+      setStatusMain("Micro refusé");
+      micReady = false;
+      resetStart();
+    });
+  } catch(e){
+    console.error(e);
+    setStatusMain("Erreur audio");
+    micReady = false;
+    resetStart();
+  }
+}
+
+function resetStart(){
+  listening=false; modelReady=false; phase=PHASE.IDLE;
+  UI.startBtn.disabled=false; UI.startBtn.textContent="START";
+  UI.startBtn.classList.remove("stop");
+  setRecOn(false);
+  stopPitchLoop();
+  updateTopMiniStatus();
+}
+
+function pitchTick(){
+  if (!pitchLoopActive) return;
+  if (!modelReady || !pitch || !mic) { schedulePitchTick(120); return; }
+
+  const dt = pitchIntervalMs();
+  if (pitchBusy){ schedulePitchTick(dt); return; }
+
+  if (phase !== PHASE.RUNNING){
+    currentFreq = null;
+    currentMidi = null;
+    currentNote = "--";
+    lastSmoothMidiRaw = null;
+    schedulePitchTick(dt);
+    return;
+  }
+
+  if (currentLevel < AMP_THRESHOLD){
+    currentFreq = null;
+    currentMidi = null;
+    currentNote = "--";
+    lastSmoothMidiRaw = null;
+    purgeHistory(millis());
+    schedulePitchTick(dt);
+    return;
+  }
+
+  pitchBusy = true;
+  pitch.getPitch((err, freq) => {
+    pitchBusy = false;
+    const now = millis();
+
+    if (!err && freq && isFinite(freq) && freq>0 && currentLevel >= AMP_THRESHOLD){
+      const midiRaw = hzToMidi(freq);
+
+      let smRaw = midiRaw;
+      if (lastSmoothMidiRaw != null) smRaw = lastSmoothMidiRaw * SMOOTH_AMOUNT + smRaw * (1 - SMOOTH_AMOUNT);
+      lastSmoothMidiRaw = smRaw;
+
+      currentFreq = freq;
+
+      const smCorrected = applyAutoOctaveShift(smRaw, now);
+      currentMidi = smCorrected;
+      currentNote = midiToNote(smCorrected);
+
+      history.push({ t: now, midi: smCorrected });
+      purgeHistory(now);
+    } else {
+      currentFreq = null;
+      currentMidi = null;
+      currentNote = "--";
+      lastSmoothMidiRaw = null;
+      purgeHistory(now);
+    }
+
+    schedulePitchTick(dt);
+  });
+}
+
+function purgeHistory(nowMs){
+  const cutoff = nowMs - WINDOW_MS;
+  while (historyHead < history.length && history[historyHead].t < cutoff) historyHead++;
+  if (historyHead > 500 || history.length > HISTORY_MAX){
+    history = history.slice(historyHead);
+    historyHead = 0;
+  }
+}
+
+function applyAutoOctaveShift(midiRawSmoothed, nowMs){
+  if (OCTAVE_REQUIRE_EXPECTED && (lastExpectedMidi == null || phase !== PHASE.RUNNING)){
+    return midiRawSmoothed + 12*octaveShift;
+  }
+  const expected = lastExpectedMidi;
+  if (expected == null) return midiRawSmoothed + 12*octaveShift;
+
+  const cur = midiRawSmoothed + 12*octaveShift;
+  const curDiff = Math.abs(cur - expected);
+
+  let bestK = octaveShift;
+  let bestCost = Infinity;
+  let bestDiff = Infinity;
+
+  for (let k = -OCTAVE_SEARCH_RANGE; k <= OCTAVE_SEARCH_RANGE; k++){
+    const cand = midiRawSmoothed + 12*k;
+    const diff = Math.abs(cand - expected);
+    const penalty = (k === octaveShift) ? 0 : OCTAVE_SWITCH_PENALTY_ST;
+    const cost = diff + penalty;
+    if (cost < bestCost){
+      bestCost = cost;
+      bestK = k;
+      bestDiff = diff;
+    }
+  }
+
+  if (bestK !== octaveShift){
+    const improve = curDiff - bestDiff;
+    if (octaveCandidate !== bestK){
+      octaveCandidate = bestK;
+      octaveCandidateSince = nowMs;
+    } else {
+      const held = (nowMs - octaveCandidateSince);
+      const force = (bestDiff <= OCTAVE_SWITCH_FORCE_ST);
+      const ok = (improve >= OCTAVE_SWITCH_IMPROVE_ST);
+      if ((force && held >= 80) || (ok && held >= OCTAVE_HYST_MS)){
+        octaveShift = bestK;
+      }
+    }
+  } else {
+    octaveCandidate = octaveShift;
+    octaveCandidateSince = nowMs;
+  }
+
+  return midiRawSmoothed + 12*octaveShift;
+}
+
+function setPitchSemis(semi){
+  if (semi <= -2) semi = -2;
+  else if (semi >= 2) semi = 2;
+  else semi = 0;
+
+  pitchStepSemis = semi;
+  semitoneOffset = semi;
+
+  const label = (semi>0 ? `+${semi}` : `${semi}`);
+  UI.pitchRead.textContent = label;
+
+  applyMp3MixSmooth(true);
+}
+
+function refreshStemButtons(){
+  UI.mouthBtn.classList.toggle("muted", !voiceOn);
+  UI.guitarBtn.classList.toggle("muted", !accompOn);
+}
+
+function updateTopMiniStatus(){
+  const midiTxt = midiLoaded ? `MIDI OK (${midiNotes.length})` : "MIDI : chargement…";
+  const micTxt  = micReady ? "Micro OK" : "Micro …";
+  setStatusMidi(`${midiTxt} • ${micTxt}`);
+}
+
+function loadMidiFile(){
+  if (typeof Midi === "undefined" || !Midi.fromUrl){
+    setStatusMidi("MIDI lib absente");
+    return;
+  }
+  Midi.fromUrl(MIDI_URL).then(midi => {
+    const notes=[];
+    midi.tracks.forEach(track=>{
+      track.notes.forEach(n=>{
+        notes.push({ timeSec:n.time, durationSec:n.duration, midi:n.midi, channel:track.channel });
+      });
+    });
+    if (!notes.length){ setStatusMidi("MIDI vide"); return; }
+
+    const filtered = notes.filter(n=>n.channel!==9);
+    const raw = filtered.length ? filtered : notes;
+
+    // FIX : ici tu avais n.timeSec (inexistant). On garde n.timeSec si présent, sinon n.time.
+    const mapped = raw.map((n)=>({ timeSec: (n.timeSec ?? n.timeSec) ?? n.timeSec, durationSec: n.durationSec ?? n.durationSec ?? n.durationSec, midi:n.midi }));
+    // fallback propre :
+    for (const m of mapped){
+      if (!isFinite(m.timeSec)) m.timeSec = 0;
+      if (!isFinite(m.durationSec)) m.durationSec = 0.1;
+    }
+    mapped.sort((a,b)=> (a.timeSec - b.timeSec) || (a.durationSec - b.durationSec) || (a.midi - b.midi));
+
+    midiNotes = mapped.map((n, i)=>({
+      id: i,
+      timeSec: n.timeSec,
+      durationSec: n.durationSec,
+      midi: n.midi,
+      startMs: Math.round(n.timeSec * 1000),
+      endMs: Math.round((n.timeSec + n.durationSec) * 1000),
+    }));
+
+    songEndMs = midiNotes.reduce((acc,n)=>Math.max(acc, n.endMs), 0);
+
+    hitFlags = new Uint8Array(midiNotes.length);
+    neonUntil = new Float32Array(midiNotes.length);
+
+    midiLoaded=true;
+
+    const sortedMidis = midiNotes.map(n=>n.midi).slice().sort((a,b)=>a-b);
+    const med = percentileSorted(sortedMidis, 0.50);
+    vpCenterMidi = med;
+    vpTargetMidi = med;
+
+    updateTopMiniStatus();
+    if (modelReady && phase === PHASE.STARTING) startCountdown();
+  }).catch(e=>{
+    console.error(e);
+    setStatusMidi("MIDI erreur");
+  });
+}
+
+function loadLyrics(){
+  fetch("lyrics.txt")
+    .then(r=>r.text())
+    .then(text=>{
+      parseLyrics(text);
+      lyricsLoaded=true;
+      if (lyrics.length){
+        UI.lyPrev.textContent = "";
+        UI.lyCur.textContent  = lyrics[0].text;
+        UI.lyNext.textContent = lyrics[1] ? lyrics[1].text : "";
+      }
+    })
+    .catch(()=>{
+      UI.lyCur.textContent = "lyrics.txt introuvable";
+      UI.lyNext.textContent = "";
+    });
+}
+
+function parseLyrics(raw){
+  lyrics=[];
+  const lines = raw.split(/\r?\n/);
+  let last=null;
+  for (let line of lines){
+    line=line.trim(); if(!line) continue;
+    const m=line.match(/^@(\d+)\s*(.*)$/);
+    if (m){
+      const beat=parseInt(m[1],10);
+      const text=m[2].trim();
+      lyrics.push({ beat, timeSec: beat*BEAT_DURATION_SEC, text });
+      last = lyrics[lyrics.length-1];
+    } else if (last){
+      last.text += (last.text ? " " : "") + line;
+    }
+  }
+  lyrics.sort((a,b)=>a.beat-b.beat);
+}
+
+function updateLyricsThrottled(now){
+  if (!lyricsLoaded || !lyrics.length || midiZeroTime === null) return;
+  if ((now - (updateLyricsThrottled._last||0)) < 120) return;
+  updateLyricsThrottled._last = now;
+
+  const songTimeMs = getSongTimeMs(now);
+  if (songTimeMs == null) return;
+
+  const currentBeat = (songTimeMs/1000) / BEAT_DURATION_SEC;
+  while (currentLyricIndex + 1 < lyrics.length && lyrics[currentLyricIndex + 1].beat <= currentBeat){
+    currentLyricIndex++;
+  }
+
+  let prevText = "";
+  let curText = lyrics[0].text;
+  let nextText = lyrics[1] ? lyrics[1].text : "";
+
+  if (currentLyricIndex >= 0){
+    prevText = (currentLyricIndex - 1 >= 0) ? lyrics[currentLyricIndex - 1].text : "";
+    curText  = lyrics[currentLyricIndex].text;
+    nextText = lyrics[currentLyricIndex + 1] ? lyrics[currentLyricIndex + 1].text : "";
+  }
+
+  UI.lyPrev.textContent = prevText;
+  UI.lyCur.textContent  = curText;
+  UI.lyNext.textContent = nextText;
+}
+
+function updateExpectedPointer(songTimeMs){
+  while (expectedIdx < midiNotes.length && songTimeMs >= midiNotes[expectedIdx].endMs) expectedIdx++;
+  while (eligibleCount < midiNotes.length && songTimeMs >= midiNotes[eligibleCount].startMs) eligibleCount++;
+}
+
+function getExpectedNow(songTimeMs){
+  if (!midiNotes.length) return null;
+  if (expectedIdx >= midiNotes.length) return null;
+  const n = midiNotes[expectedIdx];
+  if (songTimeMs < n.startMs || songTimeMs >= n.endMs) return null;
+  const expectedMidi = n.midi + semitoneOffset;
+  const remainingSec = Math.max(0, (n.endMs - songTimeMs)/1000);
+  return { id: n.id, midi: expectedMidi, remainingSec };
+}
+
+function startCountdown(){
+  phase=PHASE.COUNTDOWN;
+  phaseT0=millis();
+  showCount(true);
+  UI.countBig.textContent="3";
+  hardResetGameState();
+
+  octaveShift = 0;
+  octaveCandidate = 0;
+  octaveCandidateSince = phaseT0;
+
+  setStatusMain("Départ…");
+  setRecOn(false);
+
+  UI.startBtn.disabled = false;
+  UI.startBtn.textContent = "STOP";
+  UI.startBtn.classList.add("stop");
+}
+
+function beginSong(){
+  showCount(false);
+  phase=PHASE.RUNNING;
+
+  midiZeroTime=millis();
+  midiPaused = false;
+  pausedAtMs = 0;
+
+  expectedIdx = 0;
+  eligibleCount = 0;
+  hitEligibleCount = 0;
+  visibleI0 = 0;
+  visibleI1 = 0;
+  _vwSongTimeMs = null;
+
+  setRecOn(true);
+  setStatusMain("Écoute en cours");
+  startMp3AllIfNeeded();
+  applyMp3MixSmooth(true);
+
+  if (neonUntil) neonUntil.fill(0);
+}
+
+function endSong(){
+  if (phase === PHASE.ENDED) return;
+  phase = PHASE.ENDED;
+  setRecOn(false);
+  setStatusMain("Fin ✅");
+
+  midiPaused = true;
+  pausedAtMs = songEndMs + END_PAD_MS;
+
+  stopMp3All();
+
+  showEnd(true);
+  UI.finalScore.textContent = String(score);
+  const msgs = [
+    "Bravo ! Belle justesse ✨",
+    "Super ! Continue comme ça 🎶",
+    "Excellent ! Tu progresses vite 🚀",
+    "Bien joué ! Encore une fois ? 🔁"
+  ];
+  UI.finalMsg.textContent = msgs[Math.floor(Math.random()*msgs.length)];
+}
+
+function getSongTimeMs(nowMs){
+  if (midiZeroTime === null) return null;
+  if (midiPaused) return pausedAtMs;
+  return nowMs - midiZeroTime;
+}
+
+function ensureVisibleWindow(songTimeMs){
+  // évite 2-3 recalculs par frame
+  if (_vwSongTimeMs === songTimeMs) return;
+  _vwSongTimeMs = songTimeMs;
+
+  const leftMs  = songTimeMs - WINDOW_MS;
+  const rightMs = songTimeMs + WINDOW_MS;
+
+  while (visibleI0 < midiNotes.length && midiNotes[visibleI0].endMs < leftMs) visibleI0++;
+  if (visibleI1 < visibleI0) visibleI1 = visibleI0;
+  while (visibleI1 < midiNotes.length && midiNotes[visibleI1].startMs <= rightMs) visibleI1++;
+}
+
+function getMelodyCenterMidi(songTimeMs){
+  if (!midiLoaded || !midiNotes.length) return vpTargetMidi;
+  ensureVisibleWindow(songTimeMs);
+
+  let minM = Infinity, maxM = -Infinity;
+  for (let i = visibleI0; i < visibleI1; i++){
+    const m = midiNotes[i].midi + semitoneOffset;
+    if (m < minM) minM = m;
+    if (m > maxM) maxM = m;
+  }
+  if (!isFinite(minM) || !isFinite(maxM)) return vpTargetMidi;
+  return (minM + maxM) * 0.5;
+}
+
+/* ====== CŒUR du changement : camera suit la VOIX, point fixe ====== */
+function updatePhaseMachine(){
+  const now=millis();
+
+  if (phase===PHASE.COUNTDOWN){
+    const dt=now-phaseT0;
+    const n=3-Math.floor(dt/1000);
+    UI.countBig.textContent=String(clamp(n,1,3));
+    if (dt>=3000) beginSong();
+  }
+
+  if (phase===PHASE.RUNNING){
+    const songTimeMs = getSongTimeMs(now);
+    if (songTimeMs == null) return;
+
+    if (songTimeMs >= (songEndMs + END_PAD_MS)){
+      endSong();
+      return;
+    }
+
+    updateExpectedPointer(songTimeMs);
+    ensureVisibleWindow(songTimeMs);
+
+    const expected = getExpectedNow(songTimeMs);
+    if (expected){
+      lastExpectedMidi = expected.midi;
+
+      // camera = voix si dispo, sinon centre mélodie visible (reste smooth)
+      if (currentMidi != null && currentLevel >= AMP_THRESHOLD){
+        vpTargetMidi = currentMidi;
+      } else {
+        vpTargetMidi = getMelodyCenterMidi(songTimeMs);
+      }
+
+      handleScoring(expected, now);
+      maybePlayExpectedNote(expected, now);
+    } else {
+      lastExpectedMidi = null;
+
+      // sans note attendue: si voix → camera voix; sinon on garde (pas de “jump”)
+      if (currentMidi != null && currentLevel >= AMP_THRESHOLD){
+        vpTargetMidi = currentMidi;
+      }
+
+      currentExpectedId = -1;
+      touchAccumMs = 0;
+      lastScoreTickMs = -1;
+    }
+  } else {
+    lastExpectedMidi = null;
+
+    // hors RUNNING: si on a une voix (rare), on peut suivre doucement; sinon rien
+    if (currentMidi != null && currentLevel >= AMP_THRESHOLD){
+      vpTargetMidi = currentMidi;
+    }
+  }
+}
+
+function hardResetGameState(){
+  score = 0; updateScoreUI();
+  combo = 0; showCombo(false);
+
+  currentExpectedId = -1;
+  touchAccumMs = 0;
+  lastScoreTickMs = -1;
+  lastLitTimeMs = -1;
+
+  lastPlayedMidi = null;
+  lastNoteFireMs = -1;
+
+  history = [];
+  historyHead = 0;
+  currentFreq = null;
+  currentMidi = null;
+  currentNote = "--";
+  lastSmoothMidiRaw = null;
+
+  currentLyricIndex = -1;
+  midiZeroTime = null;
+  midiPaused = false;
+  pausedAtMs = 0;
+
+  if (hitFlags) hitFlags.fill(0);
+  hitEligibleCount = 0;
+  eligibleCount = 0;
+
+  pCount = 0;
+  pHead = 0;
+
+  pitchDotAlpha = 0;
+
+  setRecOn(false);
+  showEnd(false);
+
+  lastExpectedMidi = null;
+  octaveShift = 0;
+  octaveCandidate = 0;
+  octaveCandidateSince = millis();
+
+  _vwSongTimeMs = null;
+}
+
+function handleScoring(expected, nowMs){
+  if (currentExpectedId !== expected.id){
+    currentExpectedId = expected.id;
+    touchAccumMs = 0;
+    lastScoreTickMs = -1;
+  }
+
+  let inTuneScore = false;
+  let inTuneTouch = false;
+
+  if (currentMidi != null && expected.midi != null){
+    const diffSt = Math.abs(currentMidi - expected.midi);
+    const tolStScore = 12 * Math.log2(1 + PITCH_TOLERANCE_RATIO);
+    inTuneScore = (diffSt <= tolStScore);
+    inTuneTouch = (diffSt <= HIT_TOLERANCE_ST);
+  }
+
+  if (inTuneScore && !midiPaused){
+    if (lastScoreTickMs < 0) lastScoreTickMs = nowMs;
+    while ((nowMs - lastScoreTickMs) >= SCORE_TICK_MS){
+      lastScoreTickMs += SCORE_TICK_MS;
+      score += SCORE_PER_TICK;
+      updateScoreUI();
+      spawnSparksAtCursor(nowMs, SPARK_RATE);
+    }
+  } else {
+    lastScoreTickMs = -1;
+  }
+
+  if (!hitFlags || hitFlags[expected.id]) return;
+
+  if (inTuneTouch && !midiPaused){
+    touchAccumMs += (deltaTime || 16);
+    if (touchAccumMs >= HIT_TOUCH_MS){
+      lightNote(expected.id, nowMs);
+    }
+  } else {
+    touchAccumMs = Math.max(0, touchAccumMs - (deltaTime || 16) * 0.65);
+  }
+}
+
+function lightNote(noteId, nowMs){
+  if (!hitFlags) return;
+  hitFlags[noteId] = 1;
+  neonUntil[noteId] = nowMs + NEON_ON_MS;
+
+  if (noteId < eligibleCount) hitEligibleCount++;
+
+  const isCombo = (lastLitTimeMs > 0 && (nowMs - lastLitTimeMs) <= 1200);
+  if (isCombo) combo++;
+  else combo = 1;
+  lastLitTimeMs = nowMs;
+
+  const bonus = Math.min(40, 6 + combo * 2);
+  score += bonus;
+  updateScoreUI();
+
+  showCombo(true, combo);
+  spawnSparksAtCursor(nowMs, 24);
+}
+
+function showCombo(show, comboVal=1){
+  if (!show){
+    UI.comboHud.classList.remove("show");
+    return;
+  }
+  UI.comboHud.textContent = (comboVal >= 3) ? (`COMBO x${comboVal}`) : (`x${comboVal}`);
+  UI.comboHud.classList.add("show");
+  setTimeout(()=> UI.comboHud.classList.remove("show"), 650);
+}
+
+function updateScoreUI(){
+  UI.scoreVal.textContent = String(score);
+}
+
+function updateHitPercentUI(){
+  if (!midiLoaded || midiZeroTime === null || phase !== PHASE.RUNNING) { UI.hitpctVal.textContent = "0"; return; }
+  if (eligibleCount <= 0) { UI.hitpctVal.textContent = "0"; return; }
+  const hits = Math.min(hitEligibleCount, eligibleCount);
+  UI.hitpctVal.textContent = String(clamp(Math.round(100 * hits / eligibleCount), 0, 100));
+}
+function updateHudLite(){ updateHitPercentUI(); }
+
+/* ====== Rendu : échelle (grid) bouge, VOIX fixe ====== */
+function boundsY(){
+  const top=16, bottom=height-28;
+  const mid=(top+bottom)*0.5;
+  return {top,bottom,mid};
+}
+
+function midiToY(midi, top, bottom){
+  const center=vpCenterMidi, half=VIEW_SPAN_ST/2;
+  const minM=center-half, maxM=center+half;
+  const m=clamp(midi, minM, maxM);
+  return map(m, minM, maxM, bottom, top);
+}
+
+function drawGrid(){
+  const {top,bottom} = boundsY();
+  const center=vpCenterMidi, half=VIEW_SPAN_ST/2;
+
+  noStroke();
+  for (let s=-Math.ceil(half); s<=Math.ceil(half); s++){
+    const m=center+s;
+    const y=midiToY(m, top, bottom);
+    if (y<top||y>bottom) continue;
+    const isOct=(Math.round(m)%12)===0;
+    fill(isOct ? color(226,232,240,28) : color(226,232,240,16));
+    rect(0, y-0.5, width, 1.2);
+  }
+
+  fill(226,232,240,175);
+  textAlign(LEFT, CENTER);
+  for (let s=-Math.ceil(half); s<=Math.ceil(half); s+=6){
+    const m=center+s;
+    const y=midiToY(m, top, bottom);
+    if (y<top||y>bottom) continue;
+    text(midiToNote(m), 8, y);
+  }
+
+  // repère de “voix fixe” (petite étiquette discrète)
+  const midY = (top+bottom)*0.5;
+  noStroke();
+  fill(226,232,240,120);
+  textAlign(LEFT, CENTER);
+  text("VOIX", 8, midY);
+}
+
+function drawCenterLine(){
+  const {top,bottom} = boundsY();
+  stroke(226,232,240,140);
+  strokeWeight(1);
+  line(width/2, top, width/2, bottom);
+}
+
+function drawVoiceDotFixed(){
+  const {top,bottom,mid} = boundsY();
+  const x = width/2;
+
+  const hasVoice = (currentMidi != null && currentLevel >= AMP_THRESHOLD);
+  if (hasVoice) pitchDotAlpha = DOT_RISE;
+  else pitchDotAlpha *= DOT_FADE_DOWN;
+
+  if (pitchDotAlpha < 2) return;
+
+  // DOT fixé au centre vertical
+  noStroke();
+  fill(34,197,94, clamp(pitchDotAlpha,0,255));
+  circle(x, mid, 10);
+
+  noFill();
+  stroke(34,197,94, clamp(pitchDotAlpha*0.35,0,90));
+  strokeWeight(3);
+  circle(x, mid, 18);
+
+  // note détectée en petit (optionnel mais utile)
+  if (hasVoice){
+    noStroke();
+    fill(34,197,94,200);
+    textAlign(CENTER, BOTTOM);
+    text(currentNote, x, mid-12);
+  }
+}
+
+/* Trace utilisateur “relative” (évite le y qui bouge) */
+function drawUserPitchRelative(){
+  if (!history.length || historyHead >= history.length) return;
+
+  const {top,bottom,mid} = boundsY();
+  const centerX=width/2;
+  const scale=WINDOW_MS/width;
+  const now=millis();
+
+  const pxPerSemi = (bottom - top) / VIEW_SPAN_ST;
+
+  stroke(34,197,94,220);
+  strokeWeight(2);
+  noFill();
+
+  let drawing=false, lastTime=null;
+
+  for (let i=historyHead; i<history.length; i++){
+    const p = history[i];
+    const age=now-p.t;
+    if (age<0 || age>WINDOW_MS) continue;
+
+    const x=centerX - age/scale;
+    if (x<0 || x>width) continue;
+
+    // y = voix fixe + écart en demi-tons par rapport à la camera actuelle
+    const dySemi = (p.midi - vpCenterMidi);
+    const y = mid - dySemi * pxPerSemi;
+
+    if (y<top-10 || y>bottom+10) continue;
+
+    const newSeg=!drawing || (lastTime!=null && p.t-lastTime>GAP_MS);
+    if (newSeg){
+      if (drawing) endShape();
+      beginShape();
+      drawing=true;
+    }
+    vertex(x,y);
+    lastTime=p.t;
+  }
+  if (drawing) endShape();
+}
+
+function drawExpectedMidiWindowed(){
+  if (!midiLoaded || midiZeroTime===null) return;
+
+  const {top,bottom} = boundsY();
+  const centerX=width/2;
+  const scale=WINDOW_MS/width;
+
+  const now=millis();
+  const songTimeMs=getSongTimeMs(now);
+  if (songTimeMs == null) return;
+
+  ensureVisibleWindow(songTimeMs);
+
+  stroke(59,130,246,220);
+  strokeWeight(4);
+
+  for (let i=visibleI0; i<visibleI1; i++){
+    const n = midiNotes[i];
+
+    const ageStart = songTimeMs - n.startMs;
+    const ageEnd   = songTimeMs - n.endMs;
+
+    const xStart = centerX - ageStart/scale;
+    const xEnd   = centerX - ageEnd/scale;
+
+    if (xStart<0 && xEnd<0) continue;
+    if (xStart>width && xEnd>width) continue;
+
+    const m = n.midi + semitoneOffset;
+    const y = midiToY(m, top, bottom);
+    if (y<top-10 || y>bottom+10) continue;
+
+    line(clamp(xStart,0,width), y, clamp(xEnd,0,width), y);
+  }
+}
+
+function drawHitHighlightsWindowed(){
+  if (!midiLoaded || midiZeroTime===null || !hitFlags) return;
+
+  const {top,bottom} = boundsY();
+  const centerX=width/2;
+  const scale=WINDOW_MS/width;
+
+  const now=millis();
+  const songTimeMs=getSongTimeMs(now);
+  if (songTimeMs == null) return;
+
+  ensureVisibleWindow(songTimeMs);
+
+  strokeWeight(4.5);
+  stroke(34, 197, 94, 235);
+
+  for (let i=visibleI0; i<visibleI1; i++){
+    if (!hitFlags[i]) continue;
+    const n = midiNotes[i];
+
+    const ageStart = songTimeMs - n.startMs;
+    const ageEnd   = songTimeMs - n.endMs;
+
+    const xStart = centerX - ageStart/scale;
+    const xEnd   = centerX - ageEnd/scale;
+
+    if (xStart<0 && xEnd<0) continue;
+    if (xStart>width && xEnd>width) continue;
+
+    const m=n.midi + semitoneOffset;
+    const y=midiToY(m, top, bottom);
+    if (y<top-10 || y>bottom+10) continue;
+
+    line(clamp(xStart,0,width), y, clamp(xEnd,0,width), y);
+  }
+
+  strokeWeight(7);
+  for (let i=visibleI0; i<visibleI1; i++){
+    const until = neonUntil[i] || 0;
+    if (until <= now) continue;
+
+    const n = midiNotes[i];
+    const ageStart = songTimeMs - n.startMs;
+    const ageEnd   = songTimeMs - n.endMs;
+
+    const xStart = centerX - ageStart/scale;
+    const xEnd   = centerX - ageEnd/scale;
+
+    if (xStart<0 && xEnd<0) continue;
+    if (xStart>width && xEnd>width) continue;
+
+    const m=n.midi + semitoneOffset;
+    const y=midiToY(m, top, bottom);
+    if (y<top-10 || y>bottom+10) continue;
+
+    stroke(34, 197, 94, 70);
+    line(clamp(xStart,0,width), y, clamp(xEnd,0,width), y);
+
+    stroke(34, 197, 94, 180);
+    strokeWeight(3.5);
+    line(clamp(xStart,0,width), y, clamp(xEnd,0,width), y);
+    strokeWeight(7);
+  }
+}
+
+/* Particules : restent au curseur (maintenant = voix fixe au centre) */
+function getCursorScreenPos(nowMs){
+  if (phase !== PHASE.RUNNING || midiZeroTime === null) return null;
+  const {mid} = boundsY();
+  return { x: width/2, y: mid };
+}
+
+function spawnSparksAtCursor(nowMs, count){
+  const cursor = getCursorScreenPos(nowMs);
+  if (!cursor) return;
+
+  const fpsNow = frameRate() || 60;
+  const mul = clamp((fpsNow/60), 0.4, 1);
+  count = Math.max(1, Math.floor(count * mul));
+
+  for (let i=0;i<count;i++){
+    const idx = (pHead + pCount) % MAX_PARTICLES;
+    if (pCount < MAX_PARTICLES) pCount++;
+    else pHead = (pHead + 1) % MAX_PARTICLES;
+
+    const ang = random(-Math.PI/2 - 0.8, -Math.PI/2 + 0.8);
+    const spd = random(0.9, 3.0);
+    const vx = Math.cos(ang) * spd + random(-0.22,0.22);
+    const vy = Math.sin(ang) * spd + random(-0.12,0.12);
+
+    particles[idx] = { x: cursor.x, y: cursor.y, vx, vy, life: random(18, 34), a: random(160, 235), s: random(1.1, 2.0) };
+  }
+}
+
+function updateParticlesPool(){
+  if (!pCount) return;
+  for (let k=0;k<pCount;k++){
+    const idx = (pHead + k) % MAX_PARTICLES;
+    const p = particles[idx];
+    if (!p) continue;
+
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.06;
+    p.vx *= 0.985;
+    p.vy *= 0.985;
+    p.life -= 1;
+    p.a *= 0.97;
+
+    const dead = (p.life <= 0 || p.a < 5 || p.x < -30 || p.x > width+30 || p.y < -60 || p.y > height+60);
+    if (dead){
+      if (idx === pHead){
+        particles[pHead] = null;
+        pHead = (pHead + 1) % MAX_PARTICLES;
+        pCount--;
+        k--;
+      } else {
+        p.a = 0;
+        p.life = 0;
+      }
+    }
+  }
+  while (pCount > 0){
+    const p = particles[pHead];
+    if (p && p.life > 0 && p.a > 5) break;
+    particles[pHead] = null;
+    pHead = (pHead + 1) % MAX_PARTICLES;
+    pCount--;
+  }
+}
+
+function drawParticlesPool(){
+  if (!pCount) return;
+  noStroke();
+  for (let k=0;k<pCount;k++){
+    const idx = (pHead + k) % MAX_PARTICLES;
+    const p = particles[idx];
+    if (!p || p.a <= 0) continue;
+    fill(255, 255, 255, p.a);
+    circle(p.x, p.y, p.s);
+  }
+}
+
+function updateVUDynamicVertical(){
+  vuSessionMax = Math.max(VU_FLOOR, vuSessionMax * VU_SESSION_DECAY);
+  vuPeakHold = Math.max(VU_FLOOR, vuPeakHold * VU_PEAK_HOLD_DECAY);
+
+  if (currentLevel > vuSessionMax) vuSessionMax = currentLevel;
+  if (currentLevel > vuPeakHold) vuPeakHold = currentLevel;
+
+  const scaleMax = Math.max(VU_FLOOR, vuSessionMax, vuPeakHold);
+  const ratio = Math.min(1, currentLevel / Math.max(1e-6, scaleMax));
+
+  UI.vuFill.style.height = (ratio*100).toFixed(0) + "%";
+  UI.levelDisplay.textContent = currentLevel.toFixed(3);
+  UI.levelMax.textContent = scaleMax.toFixed(3);
+}
+
+/* ====== Audio guide MIDI ====== */
+function initSynthIfNeeded(){
+  if (!audioContext || masterGain) return;
+  masterGain = audioContext.createGain();
+  masterGain.gain.value = 0.25;
+  masterGain.connect(audioContext.destination);
+}
+
+function applyGuideVolumeSmooth(){
+  if (!masterGain || !audioContext) return;
+  const v = clamp(guideVol01, 0, 1);
+  const boosted = Math.min(1.25, v * 1.25);
+  const t = audioContext.currentTime;
+  masterGain.gain.cancelScheduledValues(t);
+  masterGain.gain.setTargetAtTime(boosted, t, 0.03);
+}
+
+function maybePlayExpectedNote(expected, nowMs){
+  if (guideVol01 <= 0.0001) return;
+  if (!audioContext || !masterGain) return;
+
+  const m = Math.round(expected.midi);
+  const dur = Math.max(0.20, Math.min(4.0, expected.remainingSec));
+
+  if (lastPlayedMidi === m) return;
+  if (lastNoteFireMs>=0 && (nowMs - lastNoteFireMs) < NOTE_RETRIGGER_GUARD_MS) return;
+
+  lastPlayedMidi = m;
+  lastNoteFireMs = nowMs;
+  playPianoLike(m, dur);
+}
+function playPianoLike(midi, noteDurSec){
+  const t0 = audioContext.currentTime;
+  const f0 = midiToHz(midi);
+
+  const g = audioContext.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+
+  const attack = 0.006, decay  = 0.12, sustainLevel = 0.12, release = 0.30;
+  g.gain.exponentialRampToValueAtTime(0.55, t0 + attack);
+  g.gain.exponentialRampToValueAtTime(sustainLevel, t0 + attack + decay);
+  const tHoldEnd = t0 + Math.max(attack+decay, noteDurSec);
+  g.gain.setValueAtTime(sustainLevel, tHoldEnd);
+  g.gain.exponentialRampToValueAtTime(0.0001, tHoldEnd + release);
+
+  const o = audioContext.createOscillator();
+  o.type = "triangle";
+  o.frequency.value = f0;
+
+  o.connect(g);
+  g.connect(masterGain);
+
+  o.start(t0);
+  o.stop(tHoldEnd + release + 0.04);
+}
+
+/* ====== MP3 mix ====== */
+function setupMp3Elements(){
+  for (let i=0;i<3;i++){
+    aVoix[i] = new Audio(VOIX_FILES[i]);
+    aInstru[i] = new Audio(INSTRU_FILES[i]);
+  }
+  const all = [...aVoix, ...aInstru];
+  for (const a of all){
+    a.preload = "auto";
+    a.loop = false;
+    a.crossOrigin = "anonymous";
+    a.volume = 1;
+  }
+}
+
+function initMp3WebAudioGraphIfNeeded(){
+  if (!audioContext || mp3SourcesMade) return;
+
+  mp3MasterGain = audioContext.createGain();
+  voiceBusGain  = audioContext.createGain();
+  instruBusGain = audioContext.createGain();
+
+  mp3MasterGain.gain.value = 0;
+  voiceBusGain.gain.value = 0;
+  instruBusGain.gain.value = 0;
+
+  voiceBusGain.connect(mp3MasterGain);
+  instruBusGain.connect(mp3MasterGain);
+  mp3MasterGain.connect(audioContext.destination);
+
+  for (let i=0;i<3;i++){
+    voiceGains[i] = audioContext.createGain();
+    instruGains[i] = audioContext.createGain();
+    voiceGains[i].gain.value = 0;
+    instruGains[i].gain.value = 0;
+    voiceGains[i].connect(voiceBusGain);
+    instruGains[i].connect(instruBusGain);
+
+    const sv = audioContext.createMediaElementSource(aVoix[i]);
+    const si = audioContext.createMediaElementSource(aInstru[i]);
+    sv.connect(voiceGains[i]);
+    si.connect(instruGains[i]);
+  }
+
+  mp3SourcesMade = true;
+}
+
+function startMp3AllIfNeeded(){
+  if (!mp3SourcesMade) return;
+  if (mp3EverStarted) return;
+
+  const all = [...aVoix, ...aInstru];
+  for (const a of all){
+    try{ a.pause(); }catch(e){}
+    try{ a.currentTime = 0; }catch(e){}
+  }
+
+  const plays = all.map(a => a.play().catch(()=>null));
+  Promise.all(plays).then(()=>{ mp3EverStarted = true; });
+}
+
+function stopMp3All(){
+  const all = [...aVoix, ...aInstru];
+  for (const a of all){
+    try{ a.pause(); }catch(e){}
+  }
+}
+
+function applyMp3MixSmooth(force=false){
+  if (!audioContext || !mp3SourcesMade) return;
+
+  const idx = stepToIndex(pitchStepSemis);
+  const t = audioContext.currentTime;
+
+  const mp3Enabled = (mp3Vol01 > 0.0001);
+  const gMaster = mp3Enabled ? mp3Vol01 : 0;
+  const gVoice  = (mp3Enabled && voiceOn) ? 1 : 0;
+  const gInstru = (mp3Enabled && accompOn) ? 1 : 0;
+
+  mp3MasterGain.gain.cancelScheduledValues(t);
+  mp3MasterGain.gain.setTargetAtTime(clamp(gMaster,0,1), t, 0.03);
+
+  voiceBusGain.gain.cancelScheduledValues(t);
+  instruBusGain.gain.cancelScheduledValues(t);
+  voiceBusGain.gain.setTargetAtTime(gVoice, t, 0.03);
+  instruBusGain.gain.setTargetAtTime(gInstru, t, 0.03);
+
+  for (let i=0;i<3;i++){
+    const v = (i===idx) ? 1 : 0;
+    voiceGains[i].gain.cancelScheduledValues(t);
+    instruGains[i].gain.cancelScheduledValues(t);
+    const tau = force ? 0.02 : 0.03;
+    voiceGains[i].gain.setTargetAtTime(v, t, tau);
+    instruGains[i].gain.setTargetAtTime(v, t, tau);
+  }
+}
+
+function resyncMutedTracksOccasionally(nowMs){
+  if (!mp3EverStarted) return;
+  if ((nowMs - lastResyncCheckMs) < 900) return;
+  lastResyncCheckMs = nowMs;
+
+  const idx = stepToIndex(pitchStepSemis);
+  const master = aVoix[idx] || aInstru[idx];
+  if (!master || master.paused) return;
+  const t0 = master.currentTime || 0;
+
+  const eps = 0.06;
+  for (let i=0;i<3;i++){
+    if (i === idx) continue;
+    const av = aVoix[i], ai = aInstru[i];
+    if (av && !av.paused){
+      const drift = (av.currentTime || 0) - t0;
+      if (Math.abs(drift) > eps) { try{ av.currentTime = t0; }catch(e){} }
+    }
+    if (ai && !ai.paused){
+      const drift = (ai.currentTime || 0) - t0;
+      if (Math.abs(drift) > eps) { try{ ai.currentTime = t0; }catch(e){} }
+    }
+  }
+}
+
+/* ====== UI helpers ====== */
+function showCount(show){ UI.countOv.classList.toggle("show", !!show); }
+function showEnd(show){ UI.endOv.classList.toggle("show", !!show); }
+function setStatusMain(t){ UI.statusMain.textContent=t; }
+function setStatusMidi(t){ UI.statusMidi.textContent=t; }
+function markReady(){ UI.status.classList.add("ready"); }
+function setRecOn(on){ UI.recDot.classList.toggle("on", !!on); }
+
+function resetToAppStart(hardAudio = true){
+  phase = PHASE.IDLE;
+  listening = false;
+  modelReady = false;
+
+  midiZeroTime = null;
+  midiPaused = false;
+  pausedAtMs = 0;
+
+  expectedIdx = 0;
+  eligibleCount = 0;
+  hitEligibleCount = 0;
+  visibleI0 = 0;
+  visibleI1 = 0;
+  _vwSongTimeMs = null;
+
+  score = 0; updateScoreUI();
+  combo = 0; showCombo(false);
+
+  currentExpectedId = -1;
+  touchAccumMs = 0;
+  lastScoreTickMs = -1;
+  lastLitTimeMs = -1;
+
+  history = [];
+  historyHead = 0;
+  currentFreq = null;
+  currentMidi = null;
+  currentNote = "--";
+  lastSmoothMidiRaw = null;
+
+  lastExpectedMidi = null;
+  octaveShift = 0;
+  octaveCandidate = 0;
+  octaveCandidateSince = millis();
+
+  currentLyricIndex = -1;
+  UI.lyPrev.textContent = "";
+  UI.lyCur.textContent  = "Paroles…";
+  UI.lyNext.textContent = "";
+
+  showCount(false);
+  showEnd(false);
+
+  setRecOn(false);
+
+  setStatusMain("Clique START");
+  UI.status.classList.remove("ready");
+
+  UI.startBtn.disabled = false;
+  UI.startBtn.textContent = "START";
+  UI.startBtn.classList.remove("stop");
+
+  const all = [...aVoix, ...aInstru];
+  for (const a of all){
+    try{ a.pause(); }catch(e){}
+    try{ a.currentTime = 0; }catch(e){}
+  }
+  mp3EverStarted = false;
+
+  updateTopMiniStatus();
+
+  if (hardAudio){
+    stopPitchLoop();
+    try{ if (mic){ mic.stop(); mic = null; } }catch(e){}
+    try{
+      const ctx = getAudioContext();
+      if (ctx && ctx.state !== "closed") ctx.suspend();
+    }catch(e){}
+    pitch = null;
+    fft = null;
+    masterGain = null;
+    lastPlayedMidi = null;
+    lastNoteFireMs = -1;
+    try{ audioContext = getAudioContext(); }catch(e){ audioContext = null; }
+  }
+}
+</script>
+</body>
+</html>
